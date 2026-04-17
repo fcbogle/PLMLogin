@@ -1,0 +1,12 @@
+{
+  "excluded_user_exact_values": [
+    "WPS Test (WPS Test: Blatchford)",
+    "PLM Test (PLM Test: Blatchford)",
+    "orgadmin (orgadmin: Blatchford)",
+    "bfpubadmin (bfpubadmin: Blatchford)",
+    "bfwcadmin (bfwcadmin: Blatchford)",
+    "PLM C (PLM C: Blatchford)",
+    "Site Administrator (SiteAdmin: Site)"
+  ],
+  "excluded_user_contains_values": []
+}
