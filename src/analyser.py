@@ -21,6 +21,9 @@ def build_analysis_outputs(
     user_summary = build_user_summary(cleaned_df, config)
     monthly_activity = build_monthly_activity(cleaned_df)
     category_summary = build_category_summary(user_summary)
+    monthly_active_users = build_monthly_active_users(cleaned_df)
+    most_active_users = build_most_active_users(user_summary)
+    least_active_users = build_least_active_users(user_summary)
     overview_metrics = build_overview_metrics(cleaned_df, user_summary, category_summary, cleaning_report)
     category_rules = build_category_rules(config)
 
@@ -33,6 +36,9 @@ def build_analysis_outputs(
         monthly_activity=monthly_activity,
         overview_metrics=overview_metrics,
         category_summary=category_summary,
+        monthly_active_users=monthly_active_users,
+        most_active_users=most_active_users,
+        least_active_users=least_active_users,
         category_rules=category_rules,
         cleaning_report=cleaning_report,
     )
@@ -140,6 +146,71 @@ def build_category_summary(user_summary: pd.DataFrame) -> pd.DataFrame:
     )
     summary["percentage_of_total_users"] = (summary["user_count"] / total_users * 100).round(2)
     return summary
+
+
+def build_monthly_active_users(cleaned_df: pd.DataFrame) -> pd.DataFrame:
+    """Build monthly active user counts for reporting charts."""
+
+    monthly_active_users = (
+        cleaned_df.groupby("year_month")["user"]
+        .nunique()
+        .reset_index(name="active_users")
+        .sort_values("year_month")
+        .reset_index(drop=True)
+    )
+    return monthly_active_users
+
+
+def build_least_active_users(user_summary: pd.DataFrame, limit: int = 50) -> pd.DataFrame:
+    """Build a table of the least active users for reporting charts."""
+
+    least_active = user_summary.sort_values(
+        [
+            "average_active_days_per_month",
+            "distinct_login_days",
+            "total_logins",
+            "user_display_name",
+            "user",
+        ],
+        ascending=[True, True, True, True, True],
+    ).head(limit)
+
+    return least_active[
+        [
+            "user_display_name",
+            "usage_category",
+            "average_active_days_per_month",
+            "distinct_login_days",
+            "total_logins",
+            "last_login_date",
+        ]
+    ].reset_index(drop=True)
+
+
+def build_most_active_users(user_summary: pd.DataFrame, limit: int = 50) -> pd.DataFrame:
+    """Build a table of the most active users for reporting charts."""
+
+    most_active = user_summary.sort_values(
+        [
+            "average_active_days_per_month",
+            "distinct_login_days",
+            "total_logins",
+            "user_display_name",
+            "user",
+        ],
+        ascending=[False, False, False, True, True],
+    ).head(limit)
+
+    return most_active[
+        [
+            "user_display_name",
+            "usage_category",
+            "average_active_days_per_month",
+            "distinct_login_days",
+            "total_logins",
+            "last_login_date",
+        ]
+    ].reset_index(drop=True)
 
 
 def build_overview_metrics(

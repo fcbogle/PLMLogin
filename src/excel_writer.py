@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from openpyxl import Workbook
+from openpyxl.chart import BarChart, DoughnutChart, LineChart, Reference
+from openpyxl.chart.label import DataLabelList
+from openpyxl.formatting.rule import CellIsRule
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
-from openpyxl.formatting.rule import CellIsRule
 
 from config import AppConfig
 from src.models import AnalysisOutputs
@@ -18,6 +20,9 @@ CATEGORY_FILLS = {
     "Occasional": PatternFill(fill_type="solid", fgColor="FFEB9C"),
     "Rare": PatternFill(fill_type="solid", fgColor="F4CCCC"),
 }
+REPORT_CHART_HEIGHT = 20
+REPORT_CHART_WIDTH = 36
+REPORT_SECTION_SPACER_ROWS = 42
 
 
 def write_analysis_workbook(outputs: AnalysisOutputs, config: AppConfig) -> None:
@@ -41,8 +46,86 @@ def write_analysis_workbook(outputs: AnalysisOutputs, config: AppConfig) -> None
     write_table_sheet(workbook.create_sheet("Rare_Users"), outputs.rare_users, category_column="usage_category")
     write_table_sheet(workbook.create_sheet("Monthly_Activity"), outputs.monthly_activity)
     write_table_sheet(workbook.create_sheet("Category_Rules"), outputs.category_rules)
+    create_reporting_sheet(workbook.create_sheet("Reporting"), outputs)
 
     workbook.save(output_path)
+
+
+def create_reporting_sheet(worksheet: Worksheet, outputs: AnalysisOutputs) -> None:
+    """Create a reporting sheet with vertically stacked source tables and charts."""
+
+    worksheet["A1"] = "PLM Usage Reporting"
+    worksheet["A1"].font = Font(bold=True, size=16)
+
+    current_row = 3
+    current_row = write_reporting_section(worksheet, "Current Usage Facts", outputs.overview_metrics, current_row)
+
+    category_header_row = current_row + 1
+    current_row = write_reporting_section(
+        worksheet,
+        "Usage Category Split Source Data",
+        outputs.category_summary,
+        current_row,
+    )
+    add_category_split_chart(
+        worksheet=worksheet,
+        anchor_cell=f"A{current_row}",
+        start_col=1,
+        header_row=category_header_row,
+        data_rows=len(outputs.category_summary),
+    )
+    current_row += REPORT_SECTION_SPACER_ROWS
+
+    monthly_header_row = current_row + 1
+    current_row = write_reporting_section(
+        worksheet,
+        "Monthly Active Users Source Data",
+        outputs.monthly_active_users,
+        current_row,
+    )
+    add_monthly_active_users_chart(
+        worksheet=worksheet,
+        anchor_cell=f"A{current_row}",
+        start_col=1,
+        header_row=monthly_header_row,
+        data_rows=len(outputs.monthly_active_users),
+    )
+    current_row += REPORT_SECTION_SPACER_ROWS
+
+    most_active_header_row = current_row + 1
+    current_row = write_reporting_section(
+        worksheet,
+        "50 Most Active Users Source Data",
+        outputs.most_active_users,
+        current_row,
+    )
+    add_ranked_users_chart(
+        worksheet=worksheet,
+        anchor_cell=f"A{current_row}",
+        start_col=1,
+        header_row=most_active_header_row,
+        data_rows=len(outputs.most_active_users),
+        title="50 Most Active Users",
+    )
+    current_row += REPORT_SECTION_SPACER_ROWS
+
+    least_active_header_row = current_row + 1
+    current_row = write_reporting_section(
+        worksheet,
+        "50 Least Active Users Source Data",
+        outputs.least_active_users,
+        current_row,
+    )
+    add_ranked_users_chart(
+        worksheet=worksheet,
+        anchor_cell=f"A{current_row}",
+        start_col=1,
+        header_row=least_active_header_row,
+        data_rows=len(outputs.least_active_users),
+        title="50 Least Active Users",
+    )
+
+    style_reporting_sheet(worksheet)
 
 
 def create_overview_sheet(worksheet: Worksheet, outputs: AnalysisOutputs) -> None:
@@ -80,6 +163,30 @@ def write_table_sheet(
         apply_category_highlighting(worksheet, dataframe.columns.get_loc(category_column) + 1)
 
 
+def write_reporting_section(
+    worksheet: Worksheet,
+    title: str,
+    dataframe,
+    start_row: int,
+) -> int:
+    """Write a reporting section vertically and return the next available row."""
+
+    worksheet.cell(row=start_row, column=1, value=title)
+    worksheet.cell(row=start_row, column=1).font = Font(bold=True, size=12)
+
+    header_row = start_row + 1
+    for column_index, header in enumerate(dataframe.columns, start=1):
+        cell = worksheet.cell(row=header_row, column=column_index, value=header)
+        cell.font = Font(bold=True)
+        cell.fill = HEADER_FILL
+
+    for row_offset, row in enumerate(dataframe.itertuples(index=False, name=None), start=1):
+        for column_index, value in enumerate(row, start=1):
+            worksheet.cell(row=header_row + row_offset, column=column_index, value=value)
+
+    return header_row + len(dataframe) + 3
+
+
 def format_sheet(worksheet: Worksheet) -> None:
     """Apply standard workbook formatting."""
 
@@ -97,6 +204,18 @@ def format_sheet(worksheet: Worksheet) -> None:
         worksheet.column_dimensions[column_letter].width = min(max(max_length + 2, 12), 40)
 
 
+def style_reporting_sheet(worksheet: Worksheet) -> None:
+    """Apply formatting specific to the reporting sheet."""
+
+    worksheet.freeze_panes = "A4"
+    worksheet.sheet_view.showGridLines = False
+
+    for column_cells in worksheet.columns:
+        column_letter = get_column_letter(column_cells[0].column)
+        max_length = max(len("" if cell.value is None else str(cell.value)) for cell in column_cells)
+        worksheet.column_dimensions[column_letter].width = min(max(max_length + 2, 14), 32)
+
+
 def apply_category_highlighting(worksheet: Worksheet, category_column_index: int) -> None:
     """Apply simple fill colours to usage categories."""
 
@@ -110,3 +229,85 @@ def apply_category_highlighting(worksheet: Worksheet, category_column_index: int
             data_range,
             CellIsRule(operator="equal", formula=[f'"{category}"'], fill=fill),
         )
+
+
+def add_category_split_chart(
+    worksheet: Worksheet,
+    anchor_cell: str,
+    start_col: int,
+    header_row: int,
+    data_rows: int,
+) -> None:
+    """Add a doughnut chart for user category split."""
+
+    chart = DoughnutChart()
+    chart.title = "Usage Category Split"
+    chart.style = 10
+    chart.height = REPORT_CHART_HEIGHT
+    chart.width = REPORT_CHART_WIDTH
+
+    labels = Reference(worksheet, min_col=start_col, min_row=header_row + 1, max_row=header_row + data_rows)
+    data = Reference(worksheet, min_col=start_col + 1, min_row=header_row, max_row=header_row + data_rows)
+    chart.add_data(data, titles_from_data=True)
+    chart.set_categories(labels)
+    chart.dataLabels = DataLabelList()
+    chart.dataLabels.showPercent = True
+    chart.dataLabels.showVal = True
+    chart.dataLabels.showLeaderLines = True
+
+    worksheet.add_chart(chart, anchor_cell)
+
+
+def add_monthly_active_users_chart(
+    worksheet: Worksheet,
+    anchor_cell: str,
+    start_col: int,
+    header_row: int,
+    data_rows: int,
+) -> None:
+    """Add a line chart for monthly active users."""
+
+    chart = LineChart()
+    chart.title = "Monthly Active Users Trend"
+    chart.y_axis.title = "Active Users"
+    chart.x_axis.title = "Reporting Month"
+    chart.style = 2
+    chart.height = REPORT_CHART_HEIGHT
+    chart.width = REPORT_CHART_WIDTH
+
+    data = Reference(worksheet, min_col=start_col + 1, min_row=header_row, max_row=header_row + data_rows)
+    categories = Reference(worksheet, min_col=start_col, min_row=header_row + 1, max_row=header_row + data_rows)
+    chart.add_data(data, titles_from_data=True)
+    chart.set_categories(categories)
+    chart.legend = None
+
+    worksheet.add_chart(chart, anchor_cell)
+
+
+def add_ranked_users_chart(
+    worksheet: Worksheet,
+    anchor_cell: str,
+    start_col: int,
+    header_row: int,
+    data_rows: int,
+    title: str,
+) -> None:
+    """Add a horizontal bar chart for ranked user activity."""
+
+    chart = BarChart()
+    chart.type = "bar"
+    chart.style = 12
+    chart.title = title
+    chart.y_axis.title = "User Name"
+    chart.x_axis.title = "Average Active Days Per Month"
+    chart.height = REPORT_CHART_HEIGHT
+    chart.width = REPORT_CHART_WIDTH
+    chart.legend = None
+    chart.gapWidth = 40
+
+    data = Reference(worksheet, min_col=start_col + 2, min_row=header_row, max_row=header_row + data_rows)
+    categories = Reference(worksheet, min_col=start_col, min_row=header_row + 1, max_row=header_row + data_rows)
+    chart.add_data(data, titles_from_data=True)
+    chart.set_categories(categories)
+
+    worksheet.add_chart(chart, anchor_cell)
