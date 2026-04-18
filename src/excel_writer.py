@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from openpyxl import Workbook
-from openpyxl.chart import BarChart, DoughnutChart, LineChart, Reference
+from openpyxl.chart import BarChart, DoughnutChart, Reference
 from openpyxl.chart.label import DataLabelList
 from openpyxl.formatting.rule import CellIsRule
 from openpyxl.styles import Font, PatternFill
@@ -92,37 +92,19 @@ def create_reporting_sheet(worksheet: Worksheet, outputs: AnalysisOutputs) -> No
     )
     current_row += REPORT_SECTION_SPACER_ROWS
 
-    most_active_header_row = current_row + 1
     current_row = write_reporting_section(
         worksheet,
         "50 Most Active Users Source Data",
         outputs.most_active_users,
         current_row,
     )
-    add_ranked_users_chart(
-        worksheet=worksheet,
-        anchor_cell=f"A{current_row}",
-        start_col=1,
-        header_row=most_active_header_row,
-        data_rows=len(outputs.most_active_users),
-        title="50 Most Active Users",
-    )
-    current_row += REPORT_SECTION_SPACER_ROWS
+    current_row += 4
 
-    least_active_header_row = current_row + 1
     current_row = write_reporting_section(
         worksheet,
-        "50 Least Active Users Source Data",
-        outputs.least_active_users,
+        "Users Not Logged In Last 90 Days",
+        outputs.at_risk_rare_users,
         current_row,
-    )
-    add_ranked_users_chart(
-        worksheet=worksheet,
-        anchor_cell=f"A{current_row}",
-        start_col=1,
-        header_row=least_active_header_row,
-        data_rows=len(outputs.least_active_users),
-        title="50 Least Active Users",
     )
 
     style_reporting_sheet(worksheet)
@@ -265,21 +247,25 @@ def add_monthly_active_users_chart(
     header_row: int,
     data_rows: int,
 ) -> None:
-    """Add a line chart for monthly active users."""
+    """Add a column chart for monthly active users."""
 
-    chart = LineChart()
-    chart.title = "Monthly Active Users Trend"
+    chart = BarChart()
+    chart.type = "col"
+    chart.title = "Monthly Active Users by Month"
     chart.y_axis.title = "Active Users"
     chart.x_axis.title = "Reporting Month"
-    chart.style = 2
+    chart.y_axis.delete = False
+    chart.x_axis.delete = False
+    chart.style = 10
     chart.height = REPORT_CHART_HEIGHT
     chart.width = REPORT_CHART_WIDTH
+    chart.legend = None
+    chart.gapWidth = 35
 
     data = Reference(worksheet, min_col=start_col + 1, min_row=header_row, max_row=header_row + data_rows)
     categories = Reference(worksheet, min_col=start_col, min_row=header_row + 1, max_row=header_row + data_rows)
     chart.add_data(data, titles_from_data=True)
     chart.set_categories(categories)
-    chart.legend = None
 
     worksheet.add_chart(chart, anchor_cell)
 

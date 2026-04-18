@@ -32,6 +32,6 @@ class AnalysisOutputs:
     category_summary: pd.DataFrame
     monthly_active_users: pd.DataFrame
     most_active_users: pd.DataFrame
-    least_active_users: pd.DataFrame
+    at_risk_rare_users: pd.DataFrame
     category_rules: pd.DataFrame
     cleaning_report: CleaningReport

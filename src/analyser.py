@@ -23,7 +23,7 @@ def build_analysis_outputs(
     category_summary = build_category_summary(user_summary)
     monthly_active_users = build_monthly_active_users(cleaned_df)
     most_active_users = build_most_active_users(user_summary)
-    least_active_users = build_least_active_users(user_summary)
+    at_risk_rare_users = build_at_risk_rare_users(user_summary)
     overview_metrics = build_overview_metrics(cleaned_df, user_summary, category_summary, cleaning_report)
     category_rules = build_category_rules(config)
 
@@ -38,7 +38,7 @@ def build_analysis_outputs(
         category_summary=category_summary,
         monthly_active_users=monthly_active_users,
         most_active_users=most_active_users,
-        least_active_users=least_active_users,
+        at_risk_rare_users=at_risk_rare_users,
         category_rules=category_rules,
         cleaning_report=cleaning_report,
     )
@@ -161,21 +161,24 @@ def build_monthly_active_users(cleaned_df: pd.DataFrame) -> pd.DataFrame:
     return monthly_active_users
 
 
-def build_least_active_users(user_summary: pd.DataFrame, limit: int = 50) -> pd.DataFrame:
-    """Build a table of the least active users for reporting charts."""
+def build_at_risk_rare_users(user_summary: pd.DataFrame, limit: int = 50) -> pd.DataFrame:
+    """Build a table of rare users who have not been active in the last 90 days."""
 
-    least_active = user_summary.sort_values(
+    at_risk = user_summary.loc[
+        (user_summary["usage_category"] == "Rare") & (~user_summary["last_90_days_active"])
+    ].sort_values(
         [
             "average_active_days_per_month",
             "distinct_login_days",
             "total_logins",
+            "last_login_date",
             "user_display_name",
             "user",
         ],
-        ascending=[True, True, True, True, True],
+        ascending=[True, True, True, True, True, True],
     ).head(limit)
 
-    return least_active[
+    return at_risk[
         [
             "user_display_name",
             "usage_category",
@@ -183,6 +186,7 @@ def build_least_active_users(user_summary: pd.DataFrame, limit: int = 50) -> pd.
             "distinct_login_days",
             "total_logins",
             "last_login_date",
+            "last_90_days_active",
         ]
     ].reset_index(drop=True)
 
