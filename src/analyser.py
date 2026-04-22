@@ -9,21 +9,31 @@ import pandas as pd
 from config import AppConfig
 from src.categoriser import categorise_user
 from src.models import AnalysisOutputs, CleaningReport
+from src.production_technicians import (
+    build_production_technician_match_report,
+    normalise_person_name,
+)
 
 
 def build_analysis_outputs(
     cleaned_df: pd.DataFrame,
     config: AppConfig,
     cleaning_report: CleaningReport,
+    production_technicians: pd.DataFrame | None = None,
 ) -> AnalysisOutputs:
     """Build the full set of workbook outputs from cleaned login data."""
 
     user_summary = build_user_summary(cleaned_df, config)
+    user_summary = add_production_technician_flags(user_summary, production_technicians)
     monthly_activity = build_monthly_activity(cleaned_df)
     category_summary = build_category_summary(user_summary)
     monthly_active_users = build_monthly_active_users(cleaned_df)
     most_active_users = build_most_active_users(user_summary)
     at_risk_rare_users = build_at_risk_rare_users(user_summary)
+    production_technician_matches = build_production_technician_match_report(
+        production_technicians if production_technicians is not None else pd.DataFrame(),
+        user_summary,
+    )
     overview_metrics = build_overview_metrics(cleaned_df, user_summary, category_summary, cleaning_report)
     category_rules = build_category_rules(config)
 
@@ -39,9 +49,32 @@ def build_analysis_outputs(
         monthly_active_users=monthly_active_users,
         most_active_users=most_active_users,
         at_risk_rare_users=at_risk_rare_users,
+        production_technician_matches=production_technician_matches,
         category_rules=category_rules,
         cleaning_report=cleaning_report,
     )
+
+
+def add_production_technician_flags(
+    user_summary: pd.DataFrame,
+    production_technicians: pd.DataFrame | None,
+) -> pd.DataFrame:
+    """Flag users who match the optional Production Technician list."""
+
+    summary = user_summary.copy()
+    summary["is_production_technician"] = False
+    summary["production_technician_name"] = pd.NA
+
+    if production_technicians is None or production_technicians.empty:
+        return summary
+
+    technician_lookup = production_technicians.set_index("production_technician_match_key")[
+        "production_technician_name"
+    ].to_dict()
+    summary_match_key = summary["user_display_name"].apply(normalise_person_name)
+    summary["production_technician_name"] = summary_match_key.map(technician_lookup)
+    summary["is_production_technician"] = summary["production_technician_name"].notna()
+    return summary
 
 
 def build_user_summary(cleaned_df: pd.DataFrame, config: AppConfig) -> pd.DataFrame:

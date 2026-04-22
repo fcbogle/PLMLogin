@@ -86,6 +86,33 @@ python main.py --help
 - `--exclusions-file`: path to a JSON exclusions file
 - `--normalise-user-case`: lower-case user identifiers during cleaning
 - `--disable-default-exclusions`: include built-in test/admin accounts
+- `--production-technicians-file`: optional Excel or CSV file containing Production Technician full names
+- `--production-technicians-sheet`: worksheet name for the Production Technician file
+- `--production-technicians-name-column`: column containing Production Technician full names, defaults to `Full Name`
+
+## Production Technician Review
+
+The app can optionally load a simple Production Technician extract and match it against the derived
+`user_display_name` from the login audit.
+
+Minimum extract:
+
+```text
+Full Name
+Andy Self
+```
+
+Example run:
+
+```bash
+python main.py \
+  --production-technicians-file /path/to/production_technicians.xlsx \
+  --production-technicians-sheet Sheet1
+```
+
+Matched Production Technicians are highlighted in `User_Summary`, `Regular_Users`,
+`Occasional_Users`, and `Rare_Users`. The workbook also includes a `Production_Techs`
+sheet and a Production Technician match section on `Reporting`.
 
 ## Exclusion List
 
@@ -122,7 +149,9 @@ The generated workbook contains:
 - `Occasional_Users`
 - `Rare_Users`
 - `Monthly_Activity`
+- `Production_Techs`
 - `Category_Rules`
+- `Reporting`
 
 ## Notes
 

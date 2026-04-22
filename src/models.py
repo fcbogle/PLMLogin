@@ -33,5 +33,6 @@ class AnalysisOutputs:
     monthly_active_users: pd.DataFrame
     most_active_users: pd.DataFrame
     at_risk_rare_users: pd.DataFrame
+    production_technician_matches: pd.DataFrame
     category_rules: pd.DataFrame
     cleaning_report: CleaningReport

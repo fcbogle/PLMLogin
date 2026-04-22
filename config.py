@@ -45,6 +45,9 @@ class AppConfig:
     )
     excluded_user_contains_values: tuple[str, ...] = ()
     exclusions_file: Path = Path("config/exclusions.json")
+    production_technicians_file: Path | None = None
+    production_technicians_sheet: str | int = 0
+    production_technicians_name_column: str = "Full Name"
     thresholds: CategoryThresholds = field(default_factory=CategoryThresholds)
     recent_activity_days: int = 90
 
@@ -60,6 +63,9 @@ def build_config_with_overrides(
     user_column: str | None = None,
     timestamp_column: str | None = None,
     exclusions_file: Path | None = None,
+    production_technicians_file: Path | None = None,
+    production_technicians_sheet: str | int | None = None,
+    production_technicians_name_column: str | None = None,
     normalise_user_case: bool | None = None,
     disable_default_exclusions: bool = False,
 ) -> AppConfig:
@@ -82,6 +88,15 @@ def build_config_with_overrides(
         output_file=output_file or config.output_file,
         user_column=user_column or config.user_column,
         timestamp_column=timestamp_column or config.timestamp_column,
+        production_technicians_file=production_technicians_file or config.production_technicians_file,
+        production_technicians_sheet=(
+            config.production_technicians_sheet
+            if production_technicians_sheet is None
+            else production_technicians_sheet
+        ),
+        production_technicians_name_column=(
+            production_technicians_name_column or config.production_technicians_name_column
+        ),
         excluded_user_exact_values=config.excluded_user_exact_values + file_exclusions["exact_values"],
         excluded_user_contains_values=config.excluded_user_contains_values + file_exclusions["contains_values"],
         exclusions_file=exclusion_file_path,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pandas as pd
 from openpyxl import Workbook
 from openpyxl.chart import BarChart, DoughnutChart, Reference
 from openpyxl.chart.label import DataLabelList
@@ -15,6 +16,7 @@ from src.models import AnalysisOutputs
 
 
 HEADER_FILL = PatternFill(fill_type="solid", fgColor="D9E2F3")
+PRODUCTION_TECHNICIAN_FILL = PatternFill(fill_type="solid", fgColor="E2F0D9")
 CATEGORY_FILLS = {
     "Regular": PatternFill(fill_type="solid", fgColor="C6EFCE"),
     "Occasional": PatternFill(fill_type="solid", fgColor="FFEB9C"),
@@ -36,15 +38,32 @@ def write_analysis_workbook(outputs: AnalysisOutputs, config: AppConfig) -> None
 
     create_overview_sheet(workbook.create_sheet("Overview"), outputs)
     write_table_sheet(workbook.create_sheet("Raw_Data"), outputs.raw_data)
-    write_table_sheet(workbook.create_sheet("User_Summary"), outputs.user_summary, category_column="usage_category")
-    write_table_sheet(workbook.create_sheet("Regular_Users"), outputs.regular_users, category_column="usage_category")
+    write_table_sheet(
+        workbook.create_sheet("User_Summary"),
+        outputs.user_summary,
+        category_column="usage_category",
+        highlight_production_technicians=True,
+    )
+    write_table_sheet(
+        workbook.create_sheet("Regular_Users"),
+        outputs.regular_users,
+        category_column="usage_category",
+        highlight_production_technicians=True,
+    )
     write_table_sheet(
         workbook.create_sheet("Occasional_Users"),
         outputs.occasional_users,
         category_column="usage_category",
+        highlight_production_technicians=True,
     )
-    write_table_sheet(workbook.create_sheet("Rare_Users"), outputs.rare_users, category_column="usage_category")
+    write_table_sheet(
+        workbook.create_sheet("Rare_Users"),
+        outputs.rare_users,
+        category_column="usage_category",
+        highlight_production_technicians=True,
+    )
     write_table_sheet(workbook.create_sheet("Monthly_Activity"), outputs.monthly_activity)
+    write_table_sheet(workbook.create_sheet("Production_Techs"), outputs.production_technician_matches)
     write_table_sheet(workbook.create_sheet("Category_Rules"), outputs.category_rules)
     create_reporting_sheet(workbook.create_sheet("Reporting"), outputs)
 
@@ -106,6 +125,14 @@ def create_reporting_sheet(worksheet: Worksheet, outputs: AnalysisOutputs) -> No
         outputs.at_risk_rare_users,
         current_row,
     )
+    current_row += 4
+
+    current_row = write_reporting_section(
+        worksheet,
+        "Production Technician Match Review",
+        outputs.production_technician_matches,
+        current_row,
+    )
 
     style_reporting_sheet(worksheet)
 
@@ -133,16 +160,22 @@ def write_table_sheet(
     worksheet: Worksheet,
     dataframe,
     category_column: str | None = None,
+    highlight_production_technicians: bool = False,
 ) -> None:
     """Write a dataframe to a worksheet and apply basic formatting."""
 
     worksheet.append(list(dataframe.columns))
     for row in dataframe.itertuples(index=False, name=None):
-        worksheet.append(list(row))
+        worksheet.append([excel_safe_value(value) for value in row])
 
     format_sheet(worksheet)
     if category_column and category_column in dataframe.columns:
         apply_category_highlighting(worksheet, dataframe.columns.get_loc(category_column) + 1)
+    if highlight_production_technicians and "is_production_technician" in dataframe.columns:
+        apply_production_technician_highlighting(
+            worksheet,
+            dataframe.columns.get_loc("is_production_technician") + 1,
+        )
 
 
 def write_reporting_section(
@@ -164,9 +197,17 @@ def write_reporting_section(
 
     for row_offset, row in enumerate(dataframe.itertuples(index=False, name=None), start=1):
         for column_index, value in enumerate(row, start=1):
-            worksheet.cell(row=header_row + row_offset, column=column_index, value=value)
+            worksheet.cell(row=header_row + row_offset, column=column_index, value=excel_safe_value(value))
 
     return header_row + len(dataframe) + 3
+
+
+def excel_safe_value(value):
+    """Convert pandas missing values to blank Excel cells."""
+
+    if pd.isna(value):
+        return None
+    return value
 
 
 def format_sheet(worksheet: Worksheet) -> None:
@@ -211,6 +252,21 @@ def apply_category_highlighting(worksheet: Worksheet, category_column_index: int
             data_range,
             CellIsRule(operator="equal", formula=[f'"{category}"'], fill=fill),
         )
+
+
+def apply_production_technician_highlighting(
+    worksheet: Worksheet,
+    production_technician_column_index: int,
+) -> None:
+    """Highlight rows matched to the Production Technician list."""
+
+    if worksheet.max_row < 2:
+        return
+
+    for row_index in range(2, worksheet.max_row + 1):
+        if worksheet.cell(row=row_index, column=production_technician_column_index).value is True:
+            for column_index in range(1, worksheet.max_column + 1):
+                worksheet.cell(row=row_index, column=column_index).fill = PRODUCTION_TECHNICIAN_FILL
 
 
 def add_category_split_chart(

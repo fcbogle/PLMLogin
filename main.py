@@ -11,6 +11,7 @@ from src.analyser import build_analysis_outputs
 from src.cleaner import clean_login_data
 from src.excel_writer import write_analysis_workbook
 from src.loader import load_login_records
+from src.production_technicians import load_production_technicians
 
 
 def configure_logging() -> None:
@@ -46,6 +47,19 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Include the built-in test/admin accounts in the analysis.",
     )
+    parser.add_argument(
+        "--production-technicians-file",
+        type=Path,
+        help="Optional Excel or CSV file containing Production Technician full names.",
+    )
+    parser.add_argument(
+        "--production-technicians-sheet",
+        help="Worksheet name for the Production Technician file. Defaults to the first sheet.",
+    )
+    parser.add_argument(
+        "--production-technicians-name-column",
+        help='Column containing Production Technician full names. Defaults to "Full Name".',
+    )
     return parser.parse_args()
 
 
@@ -61,13 +75,17 @@ def main() -> None:
         user_column=args.user_column,
         timestamp_column=args.timestamp_column,
         exclusions_file=args.exclusions_file,
+        production_technicians_file=args.production_technicians_file,
+        production_technicians_sheet=args.production_technicians_sheet,
+        production_technicians_name_column=args.production_technicians_name_column,
         normalise_user_case=True if args.normalise_user_case else None,
         disable_default_exclusions=args.disable_default_exclusions,
     )
 
     raw_df = load_login_records(config)
     cleaned_df, cleaning_report = clean_login_data(raw_df, config)
-    outputs = build_analysis_outputs(cleaned_df, config, cleaning_report)
+    production_technicians = load_production_technicians(config)
+    outputs = build_analysis_outputs(cleaned_df, config, cleaning_report, production_technicians)
     write_analysis_workbook(outputs, config)
 
     logging.info("Analysis workbook created at %s", config.output_file.resolve())
