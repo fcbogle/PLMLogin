@@ -27,7 +27,17 @@ class AnalysisOutputs:
     regular_users: pd.DataFrame
     occasional_users: pd.DataFrame
     rare_users: pd.DataFrame
+    adu_raw_data: pd.DataFrame
+    adu_user_summary: pd.DataFrame
+    adu_monthly_denials: pd.DataFrame
     monthly_activity: pd.DataFrame
+    licence_recommendations: pd.DataFrame
+    dedicated_licence_candidates: pd.DataFrame
+    unused_licence_evidence: pd.DataFrame
+    executive_summary: pd.DataFrame
+    recommendation_summary: pd.DataFrame
+    production_technician_review_summary: pd.DataFrame
+    licence_balance: pd.DataFrame
     overview_metrics: pd.DataFrame
     category_summary: pd.DataFrame
     monthly_active_users: pd.DataFrame

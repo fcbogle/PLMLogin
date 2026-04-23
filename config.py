@@ -21,9 +21,15 @@ class AppConfig:
 
     input_file: Path = Path("/Users/frankbogle/Documents/login/BlatchfordUserLoginAuditReportExport.xlsx")
     input_sheet: str = "AuditReportExport"
-    output_file: Path = Path("output/plm_login_analysis.xlsx")
+    output_file: Path = Path("output/plm_usage_and_licence_optimisation_analysis.xlsx")
     user_column: str = "User Name"
     timestamp_column: str = "Event Time"
+    adu_input_file: Path | None = Path("/Users/frankbogle/Documents/adu/Insufficient ADU License-Login Audit Repot.xlsx")
+    adu_input_sheet: str = "AuditReportExport (1)"
+    adu_user_column: str = "User Name"
+    adu_timestamp_column: str = "Event Time"
+    adu_event_label_column: str = "Event Label"
+    adu_denied_event_label: str = "Login Denied - Insufficient ADU License"
     optional_columns: list[str] = field(
         default_factory=lambda: [
             "Event Label",
@@ -50,6 +56,9 @@ class AppConfig:
     production_technicians_name_column: str = "Full Name"
     thresholds: CategoryThresholds = field(default_factory=CategoryThresholds)
     recent_activity_days: int = 90
+    adu_repeated_denial_days_threshold: int = 2
+    adu_repeated_denial_attempts_threshold: int = 3
+    dedicated_licence_denied_days_threshold: int = 10
 
 
 DEFAULT_CONFIG = AppConfig()
@@ -62,6 +71,11 @@ def build_config_with_overrides(
     output_file: Path | None = None,
     user_column: str | None = None,
     timestamp_column: str | None = None,
+    adu_input_file: Path | None = None,
+    adu_input_sheet: str | None = None,
+    adu_user_column: str | None = None,
+    adu_timestamp_column: str | None = None,
+    adu_event_label_column: str | None = None,
     exclusions_file: Path | None = None,
     production_technicians_file: Path | None = None,
     production_technicians_sheet: str | int | None = None,
@@ -88,6 +102,11 @@ def build_config_with_overrides(
         output_file=output_file or config.output_file,
         user_column=user_column or config.user_column,
         timestamp_column=timestamp_column or config.timestamp_column,
+        adu_input_file=adu_input_file if adu_input_file is not None else config.adu_input_file,
+        adu_input_sheet=adu_input_sheet or config.adu_input_sheet,
+        adu_user_column=adu_user_column or config.adu_user_column,
+        adu_timestamp_column=adu_timestamp_column or config.adu_timestamp_column,
+        adu_event_label_column=adu_event_label_column or config.adu_event_label_column,
         production_technicians_file=production_technicians_file or config.production_technicians_file,
         production_technicians_sheet=(
             config.production_technicians_sheet

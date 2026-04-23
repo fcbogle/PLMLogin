@@ -1,14 +1,19 @@
-# PLM Login Analysis
+# PLM Usage and Licence Optimisation Analysis
 
-Python application for analysing PLM login activity from an Excel export and producing a business-readable Excel workbook.
+Python application for analysing PLM login activity, ADU licence-denial activity, and Production Technician licence usage.
+It produces a business-readable Excel workbook focused on licence review and reallocation decisions.
 
 ## What It Does
 
-- reads a source Excel workbook
+- reads a PLM login audit workbook
+- reads an ADU insufficient-licence audit workbook
+- optionally reads a Production Technician list
 - cleans and validates login data
 - groups activity by user
 - classifies users as `Regular`, `Occasional`, or `Rare`
-- writes a formatted Excel output workbook with summary tabs
+- identifies ADU users who may need dedicated licences
+- identifies Production Technicians with no or rare observed PLM authentication
+- writes a formatted Excel output workbook with executive, recommendation, analysis, and source-data tabs
 
 The analysis is designed to prioritise regularity of usage over raw login volume.
 
@@ -22,6 +27,7 @@ plm_login/
 │   └── exclusions.json
 └── src/
     ├── analyser.py
+    ├── adu.py
     ├── categoriser.py
     ├── cleaner.py
     ├── excel_writer.py
@@ -49,8 +55,12 @@ By default the app uses:
   `/Users/frankbogle/Documents/login/BlatchfordUserLoginAuditReportExport.xlsx`
 - input sheet:
   `AuditReportExport`
+- ADU workbook:
+  `/Users/frankbogle/Documents/adu/Insufficient ADU License-Login Audit Repot.xlsx`
+- ADU sheet:
+  `AuditReportExport (1)`
 - output workbook:
-  `output/plm_login_analysis.xlsx`
+  `output/plm_usage_and_licence_optimisation_analysis.xlsx`
 
 These can be overridden from the command line.
 
@@ -67,7 +77,11 @@ Specify input and output paths:
 ```bash
 python main.py \
   --input-file /Users/frankbogle/Documents/login/BlatchfordUserLoginAuditReportExport.xlsx \
-  --output-file output/plm_login_analysis.xlsx
+  --adu-input-file "/Users/frankbogle/Documents/adu/Insufficient ADU License-Login Audit Repot.xlsx" \
+  --production-technicians-file /Users/frankbogle/Documents/pr_tech/Production_Technician-22-04-26.xlsx \
+  --production-technicians-sheet Sheet1 \
+  --production-technicians-name-column User \
+  --output-file output/plm_usage_and_licence_optimisation_analysis.xlsx
 ```
 
 See all options:
@@ -83,6 +97,11 @@ python main.py --help
 - `--output-file`: output workbook path
 - `--user-column`: source user column name
 - `--timestamp-column`: source timestamp column name
+- `--adu-input-file`: path to the ADU denial audit workbook
+- `--adu-input-sheet`: ADU denial worksheet name
+- `--adu-user-column`: ADU audit user column name
+- `--adu-timestamp-column`: ADU audit timestamp column name
+- `--adu-event-label-column`: ADU audit event label column name
 - `--exclusions-file`: path to a JSON exclusions file
 - `--normalise-user-case`: lower-case user identifiers during cleaning
 - `--disable-default-exclusions`: include built-in test/admin accounts
@@ -111,8 +130,10 @@ python main.py \
 ```
 
 Matched Production Technicians are highlighted in `User_Summary`, `Regular_Users`,
-`Occasional_Users`, and `Rare_Users`. The workbook also includes a `Production_Techs`
-sheet and a Production Technician match section on `Reporting`.
+`Occasional_Users`, and `Rare_Users`.
+
+Production Technicians not matched to the PLM login audit after name matching are treated as having
+no observed PLM authentication during the reporting period.
 
 ## Exclusion List
 
@@ -142,16 +163,23 @@ If the JSON file is omitted, the app still works.
 
 The generated workbook contains:
 
-- `Overview`
-- `Raw_Data`
+- `Executive_Summary`
+- `Licence_Recommendations`
+- `Usage_Analysis`
+- `ADU_Analysis`
+- `Production_Tech_Review`
 - `User_Summary`
 - `Regular_Users`
 - `Occasional_Users`
 - `Rare_Users`
-- `Monthly_Activity`
-- `Production_Techs`
-- `Category_Rules`
 - `Reporting`
+- `ADU_Denied_Users`
+- `Monthly_Usage`
+- `Monthly_ADU_Denials`
+- `Raw_Login_Data`
+- `Raw_ADU_Data`
+- `Source_Lists`
+- `Rules_And_Assumptions`
 
 ## Notes
 

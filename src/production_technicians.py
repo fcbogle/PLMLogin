@@ -90,6 +90,7 @@ def build_production_technician_match_report(
                 "match_status",
                 "matched_user",
                 "usage_category",
+                "review_status",
                 "distinct_login_days",
                 "last_login_date",
             ]
@@ -113,6 +114,7 @@ def build_production_technician_match_report(
     )
     matched["match_status"] = matched["user"].apply(lambda value: "Matched" if pd.notna(value) else "Unmatched")
     matched = matched.rename(columns={"user": "matched_user"})
+    matched["review_status"] = matched.apply(classify_review_status, axis=1)
     return matched[
         [
             "production_technician_name",
@@ -120,7 +122,20 @@ def build_production_technician_match_report(
             "matched_user",
             "user_display_name",
             "usage_category",
+            "review_status",
             "distinct_login_days",
             "last_login_date",
         ]
     ].sort_values(["match_status", "production_technician_name"]).reset_index(drop=True)
+
+
+def classify_review_status(row: pd.Series) -> str:
+    """Classify Production Technician licence review status."""
+
+    if row["match_status"] != "Matched":
+        return "No observed PLM authentication"
+    if row["usage_category"] == "Regular":
+        return "Retain dedicated licence"
+    if row["usage_category"] == "Occasional":
+        return "Review business need"
+    return "Candidate for licence removal/reallocation"
