@@ -30,6 +30,10 @@ class AnalysisOutputs:
     adu_raw_data: pd.DataFrame
     adu_user_summary: pd.DataFrame
     adu_monthly_denials: pd.DataFrame
+    named_licence_analysis: pd.DataFrame
+    named_licence_summary: pd.DataFrame
+    named_licence_review_summary: pd.DataFrame
+    named_licence_no_login: pd.DataFrame
     monthly_activity: pd.DataFrame
     licence_recommendations: pd.DataFrame
     dedicated_licence_candidates: pd.DataFrame

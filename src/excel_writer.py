@@ -26,6 +26,7 @@ CATEGORY_FILLS = {
 REPORT_CHART_HEIGHT = 10
 REPORT_CHART_WIDTH = 18
 REPORT_SECTION_SPACER_ROWS = 42
+EXECUTIVE_TAB_COLOR = "70AD47"
 
 
 def write_analysis_workbook(outputs: AnalysisOutputs, config: AppConfig) -> None:
@@ -37,7 +38,11 @@ def write_analysis_workbook(outputs: AnalysisOutputs, config: AppConfig) -> None
     workbook = Workbook()
     workbook.remove(workbook.active)
 
-    create_executive_summary_sheet(workbook.create_sheet("Executive_Summary"), outputs)
+    create_overall_plm_analysis_sheet(workbook.create_sheet("A_Overall_PLM_Analysis"), outputs)
+    create_named_licence_analysis_sheet(workbook.create_sheet("B_Named_License_Analysis"), outputs)
+    create_adu_licence_analysis_sheet(workbook.create_sheet("C_ADU_License_Analysis"), outputs)
+    create_reallocation_opportunity_sheet(workbook.create_sheet("D_Reallocation_Opportunity"), outputs)
+    write_table_sheet(workbook.create_sheet("Named_Licence_Analysis"), outputs.named_licence_analysis)
     write_table_sheet(
         workbook.create_sheet("Licence_Recommendations"),
         outputs.licence_recommendations,
@@ -85,6 +90,7 @@ def write_analysis_workbook(outputs: AnalysisOutputs, config: AppConfig) -> None
     )
     create_reporting_sheet(workbook.create_sheet("Reporting"), outputs)
     write_table_sheet(workbook.create_sheet("ADU_Denied_Users"), outputs.adu_user_summary)
+    write_table_sheet(workbook.create_sheet("Named_Licence_No_Login"), outputs.named_licence_no_login)
     write_table_sheet(workbook.create_sheet("Monthly_Usage"), outputs.monthly_activity)
     write_table_sheet(workbook.create_sheet("Monthly_ADU_Denials"), outputs.adu_monthly_denials)
     write_table_sheet(workbook.create_sheet("Raw_Login_Data"), outputs.raw_data)
@@ -92,87 +98,288 @@ def write_analysis_workbook(outputs: AnalysisOutputs, config: AppConfig) -> None
     write_table_sheet(workbook.create_sheet("Source_Lists"), outputs.production_technician_matches)
     create_rules_and_assumptions_sheet(workbook.create_sheet("Rules_And_Assumptions"), outputs, config)
 
+    for sheet_name in [
+        "A_Overall_PLM_Analysis",
+        "B_Named_License_Analysis",
+        "C_ADU_License_Analysis",
+        "D_Reallocation_Opportunity",
+    ]:
+        workbook[sheet_name].sheet_properties.tabColor = EXECUTIVE_TAB_COLOR
+
     workbook.save(output_path)
 
 
-def create_executive_summary_sheet(worksheet: Worksheet, outputs: AnalysisOutputs) -> None:
-    """Create a management-level summary sheet with headline charts."""
+def create_overall_plm_analysis_sheet(worksheet: Worksheet, outputs: AnalysisOutputs) -> None:
+    """Create executive tab A for overall PLM usage."""
 
-    worksheet["A1"] = "PLM Usage and Licence Optimisation"
+    worksheet["A1"] = "A: Overall PLM Analysis"
     worksheet["A1"].font = Font(bold=True, size=16)
+    worksheet["A2"] = "Source data: PLM login audit over the reporting period."
 
-    write_positioned_table(worksheet, outputs.executive_summary, start_row=3, start_col=1, title="Executive Metrics")
-    write_positioned_table(worksheet, outputs.category_summary, start_row=3, start_col=4, title="PLM Users by Usage Category")
-    write_positioned_table(
+    overall_metrics = outputs.executive_summary.iloc[:5].reset_index(drop=True)
+    estate_metrics = build_overall_estate_metrics(outputs)
+    named_vs_adu_status = build_named_vs_adu_status_source(outputs)
+    named_vs_average = build_named_vs_average_source(outputs)
+    write_positioned_table(worksheet, overall_metrics, 4, 1, "PLM Usage Metrics")
+    write_positioned_table(worksheet, outputs.category_summary, 4, 5, "PLM Users by Usage Category")
+    write_positioned_table(worksheet, outputs.monthly_active_users, 4, 9, "Monthly PLM Users")
+    write_positioned_table(worksheet, estate_metrics, 36, 1, "Licence Population Metrics")
+    write_positioned_table(worksheet, named_vs_average, 36, 5, "Named Licence vs Usage Comparison")
+    write_positioned_table(worksheet, named_vs_adu_status, 36, 9, "Named vs ADU Users by Status")
+
+    add_category_split_chart(worksheet, "A16", 5, 5, len(outputs.category_summary))
+    write_chart_explanation(
         worksheet,
-        outputs.recommendation_summary,
-        start_row=3,
-        start_col=8,
-        title="Recommendation Breakdown",
-    )
-    write_positioned_table(
-        worksheet,
-        outputs.licence_balance,
-        start_row=15,
-        start_col=8,
-        title="Licence Recovery vs Demand",
-    )
-    write_positioned_table(
-        worksheet,
-        build_executive_threshold_explanation(),
-        start_row=17,
+        start_row=28,
         start_col=1,
-        title="Dedicated Licence Threshold",
-    )
-    write_positioned_table(
-        worksheet,
-        outputs.unused_licence_evidence,
-        start_row=23,
-        start_col=1,
-        title="Recoverable Licence Evidence",
-    )
-    write_positioned_table(
-        worksheet,
-        outputs.production_technician_review_summary,
-        start_row=25,
-        start_col=8,
-        title="Production Technician Review",
-    )
-    write_positioned_table(
-        worksheet,
-        outputs.dedicated_licence_candidates,
-        start_row=32,
-        start_col=1,
-        title="Users Recommended for Dedicated Licences",
+        summary="Shows the split of users classed as Regular, Occasional, and Rare.",
+        source="Built from the PLM login audit using average active login days per month.",
+        message="Most PLM users are not regular users, which supports limiting dedicated licences to the most consistent users.",
+        width_columns=6,
     )
 
-    add_category_split_chart(worksheet, "D10", 4, 4, len(outputs.category_summary))
+    add_monthly_active_users_chart(worksheet, "H16", 9, 5, len(outputs.monthly_active_users))
+    avg_monthly_users = round(outputs.monthly_active_users["active_users"].mean(), 2) if not outputs.monthly_active_users.empty else 0
+    write_chart_explanation(
+        worksheet,
+        start_row=28,
+        start_col=8,
+        summary="Shows how many users accessed PLM in each reporting month.",
+        source="Built from the PLM login audit using distinct users active in each month.",
+        message=f"Average monthly PLM usage is {avg_monthly_users}, materially below total named licence allocation.",
+        width_columns=6,
+    )
+
     add_simple_bar_chart(
         worksheet,
-        "H10",
-        start_col=8,
-        header_row=4,
-        data_rows=len(outputs.recommendation_summary),
-        title="Recommendation Breakdown",
+        "A48",
+        start_col=5,
+        header_row=37,
+        data_rows=len(named_vs_average),
+        title="Named Licence Users vs Average Monthly PLM Users",
         category_col_offset=0,
         data_col_offset=1,
-        x_axis_title="Recommendation",
+        x_axis_title="Metric",
+        y_axis_title="Users",
+        show_category_labels=False,
+    )
+    write_chart_explanation(
+        worksheet,
+        start_row=60,
+        start_col=1,
+        summary="Compares total named licence users with average monthly PLM users and named users with no observed login.",
+        source="Built from the named licence assignment file and monthly distinct-user counts from the PLM login audit.",
+        message="The named licence population is much larger than observed monthly usage, and a material subset of named users show no login activity.",
+        width_columns=6,
+    )
+
+    add_stacked_status_chart(
+        worksheet,
+        "H48",
+        start_col=9,
+        header_row=37,
+        data_rows=len(named_vs_adu_status),
+        title="Named vs ADU Users by Status",
+        x_axis_title="Assigned Group",
         y_axis_title="Users",
     )
+    write_chart_explanation(
+        worksheet,
+        start_row=60,
+        start_col=8,
+        summary="Compares usage-status distribution across named users and ADU-assigned users.",
+        source="Built from the named licence assignment file, PLM login audit, and ADU assignment subset.",
+        message="Named and ADU populations show very different usage patterns, helping distinguish allocation issues from genuine shared-access demand.",
+        width_columns=6,
+    )
+    style_dashboard_sheet(worksheet)
+
+
+def create_named_licence_analysis_sheet(worksheet: Worksheet, outputs: AnalysisOutputs) -> None:
+    """Create executive tab B for named licence analysis."""
+
+    worksheet["A1"] = "B: Named License Analysis"
+    worksheet["A1"].font = Font(bold=True, size=16)
+    worksheet["A2"] = "Source data: named licence assignments matched to observed PLM usage."
+
+    write_positioned_table(worksheet, outputs.named_licence_summary, 4, 1, "Named Licence Metrics")
+    write_positioned_table(worksheet, outputs.named_licence_review_summary, 4, 5, "Named Licence Review Status")
+    comparison_source = build_named_licence_allocation_chart_source(outputs)
+    write_positioned_table(worksheet, comparison_source, 4, 9, "Named Licence Allocation Comparison")
+
     add_simple_bar_chart(
         worksheet,
-        "H21",
+        "A18",
+        start_col=5,
+        header_row=5,
+        data_rows=len(outputs.named_licence_review_summary),
+        title="Named Licence Usage Split",
+        category_col_offset=0,
+        data_col_offset=1,
+        x_axis_title="Review Status",
+        y_axis_title="Users",
+        show_category_labels=False,
+    )
+    write_chart_explanation(
+        worksheet,
+        start_row=30,
+        start_col=1,
+        summary="Shows how named licence holders are distributed across retain, review, transfer, and no observed login statuses.",
+        source="Built by matching the named licence assignment file to the PLM login audit.",
+        message="A substantial share of named licences are assigned to users with low or no observed PLM usage.",
+        width_columns=6,
+    )
+
+    add_simple_bar_chart(
+        worksheet,
+        "H18",
+        start_col=9,
+        header_row=5,
+        data_rows=len(comparison_source),
+        title="Named Licences Allocated vs Average Monthly Users",
+        category_col_offset=0,
+        data_col_offset=1,
+        x_axis_title="Metric",
+        y_axis_title="Users",
+        show_category_labels=False,
+    )
+    write_chart_explanation(
+        worksheet,
+        start_row=30,
         start_col=8,
-        header_row=16,
+        summary="Compares the number of named licences allocated with average monthly PLM users.",
+        source="Built from the named licence assignment file and average monthly distinct-user counts from the PLM login audit.",
+        message="Named licence allocation exceeds observed monthly usage, indicating possible reassignment opportunities.",
+        width_columns=6,
+    )
+    style_dashboard_sheet(worksheet)
+
+
+def create_adu_licence_analysis_sheet(worksheet: Worksheet, outputs: AnalysisOutputs) -> None:
+    """Create executive tab C for ADU licence pressure."""
+
+    worksheet["A1"] = "C: ADU License Analysis"
+    worksheet["A1"].font = Font(bold=True, size=16)
+    worksheet["A2"] = "Source data: unsuccessful ADU/shared licence requests."
+
+    adu_metrics = build_adu_executive_summary(outputs)
+    threshold_info = build_executive_threshold_explanation()
+    top_adu_users = build_ranked_adu_users_for_chart(outputs.adu_user_summary.head(20))
+
+    write_positioned_table(worksheet, adu_metrics, 4, 1, "ADU Pressure Metrics")
+    write_positioned_table(worksheet, threshold_info, 4, 5, "Dedicated Licence Threshold")
+    write_positioned_table(worksheet, outputs.adu_monthly_denials, 4, 9, "ADU Denials by Month")
+    write_positioned_table(worksheet, top_adu_users, 30, 1, "Users Most Affected by ADU Limits")
+    write_positioned_table(worksheet, build_adu_user_label_lookup(top_adu_users), 30, 9, "ADU User Label Key")
+
+    add_simple_bar_chart(
+        worksheet,
+        "A60",
+        start_col=9,
+        header_row=5,
+        data_rows=len(outputs.adu_monthly_denials),
+        title="ADU Licence Denials by Month",
+        category_col_offset=0,
+        data_col_offset=2,
+        x_axis_title="Month",
+        y_axis_title="Denied Attempts",
+        show_category_labels=False,
+    )
+    write_chart_explanation(
+        worksheet,
+        start_row=72,
+        start_col=1,
+        summary="Shows monthly ADU/shared licence denial events across the reporting period.",
+        source="Derived from the ADU insufficient-licence audit.",
+        message="ADU demand is concentrated in specific periods and demonstrates access pressure in the shared licence model.",
+        width_columns=6,
+    )
+
+    add_simple_bar_chart(
+        worksheet,
+        "H60",
+        start_col=1,
+        header_row=31,
+        data_rows=len(top_adu_users),
+        title="Users Most Affected by ADU Licence Limits",
+        category_col_offset=0,
+        data_col_offset=4,
+        x_axis_title="User Label",
+        y_axis_title="Denied Days",
+        show_category_labels=False,
+    )
+    write_chart_explanation(
+        worksheet,
+        start_row=72,
+        start_col=8,
+        summary="Shows the ADU users with the highest number of denied days.",
+        source="Derived from the ADU insufficient-licence audit and ranked by distinct denied days.",
+        message="A small number of users account for the strongest evidence of unmet dedicated licence demand.",
+        width_columns=6,
+    )
+    style_dashboard_sheet(worksheet)
+
+
+def create_reallocation_opportunity_sheet(worksheet: Worksheet, outputs: AnalysisOutputs) -> None:
+    """Create executive tab D for reallocation opportunity."""
+
+    worksheet["A1"] = "D: Reallocation Opportunity"
+    worksheet["A1"].font = Font(bold=True, size=16)
+    worksheet["A2"] = (
+        "Source data: combined evidence from PLM usage, ADU denials, Production Technicians, and named licences."
+    )
+
+    write_positioned_table(worksheet, outputs.licence_balance, 4, 1, "Licence Recovery vs Demand")
+    write_positioned_table(worksheet, outputs.unused_licence_evidence, 4, 5, "Recoverable Licence Evidence")
+    write_positioned_table(worksheet, outputs.recommendation_summary, 30, 1, "Recommendation Breakdown")
+    write_positioned_table(worksheet, outputs.dedicated_licence_candidates, 30, 5, "Users Recommended for Dedicated Licences")
+
+    add_simple_bar_chart(
+        worksheet,
+        "A60",
+        start_col=1,
+        header_row=5,
         data_rows=len(outputs.licence_balance),
         title="Licence Recovery vs Demand",
         category_col_offset=0,
         data_col_offset=1,
         x_axis_title="Licence Position",
         y_axis_title="Users",
+        show_category_labels=False,
     )
-    format_sheet(worksheet)
-    worksheet.sheet_view.showGridLines = False
+    write_chart_explanation(
+        worksheet,
+        start_row=72,
+        start_col=1,
+        summary="Compares potential recoverable licences with high-confidence dedicated licence demand.",
+        source="Built from named licence analysis, Production Technician review, and ADU candidate analysis.",
+        message="Recoverable licence capacity appears sufficient to meet identified high-confidence demand.",
+        width_columns=6,
+    )
+
+    add_simple_bar_chart(
+        worksheet,
+        "H60",
+        start_col=1,
+        header_row=31,
+        data_rows=len(outputs.recommendation_summary),
+        title="Recommendation Breakdown",
+        category_col_offset=0,
+        data_col_offset=1,
+        x_axis_title="Recommendation",
+        y_axis_title="Users",
+        show_category_labels=False,
+    )
+    write_chart_explanation(
+        worksheet,
+        start_row=72,
+        start_col=8,
+        summary="Shows the count of users in each recommendation category.",
+        source="Built from combined PLM usage, ADU denial, Production Technician, and named licence evidence.",
+        message="The recommendation profile supports targeted reassignment rather than broad licence changes.",
+        width_columns=6,
+    )
+    style_dashboard_sheet(worksheet)
 
 
 def build_executive_threshold_explanation() -> pd.DataFrame:
@@ -195,6 +402,110 @@ def build_executive_threshold_explanation() -> pd.DataFrame:
             },
         ]
     )
+
+
+def build_named_licence_allocation_chart_source(outputs: AnalysisOutputs) -> pd.DataFrame:
+    """Build a small comparison table for named licences versus monthly users."""
+
+    named_licences = int(outputs.named_licence_summary.loc[
+        outputs.named_licence_summary["metric"] == "Named licences allocated", "value"
+    ].iloc[0]) if not outputs.named_licence_summary.empty else 0
+    average_monthly_users = float(outputs.named_licence_summary.loc[
+        outputs.named_licence_summary["metric"] == "Average monthly PLM users", "value"
+    ].iloc[0]) if not outputs.named_licence_summary.empty else 0
+    return pd.DataFrame(
+        [
+            {"metric": "Named licences allocated", "value": named_licences},
+            {"metric": "Average monthly PLM users", "value": average_monthly_users},
+        ]
+    )
+
+
+def build_adu_executive_summary(outputs: AnalysisOutputs) -> pd.DataFrame:
+    """Build a compact ADU-focused executive table."""
+
+    recommendation_counts = outputs.recommendation_summary.set_index("recommendation")["user_count"].to_dict()
+    return pd.DataFrame(
+        [
+            {"metric": "Users with ADU denial evidence", "value": len(outputs.adu_user_summary)},
+            {
+                "metric": "High-confidence dedicated licence candidates",
+                "value": recommendation_counts.get("Consider dedicated licence allocation", 0),
+            },
+            {
+                "metric": "ADU users for review",
+                "value": recommendation_counts.get("Review licence need", 0),
+            },
+            {
+                "metric": "ADU users to monitor",
+                "value": recommendation_counts.get("Monitor", 0),
+            },
+        ]
+    )
+
+
+def build_overall_estate_metrics(outputs: AnalysisOutputs) -> pd.DataFrame:
+    """Build overall estate metrics for the top-level PLM tab."""
+
+    named = outputs.named_licence_analysis
+    avg_monthly_users = round(outputs.monthly_active_users["active_users"].mean(), 2) if not outputs.monthly_active_users.empty else 0
+    adu_assigned = named.loc[named["allocated_licence"] == "PTC Navigate Contributor - ADU"] if not named.empty else named
+    return pd.DataFrame(
+        [
+            {"metric": "Named licence users", "value": len(named)},
+            {
+                "metric": "Named licence users with no observed login",
+                "value": int((named["match_status"] != "Matched").sum()) if not named.empty else 0,
+            },
+            {"metric": "ADU-assigned users", "value": len(adu_assigned)},
+            {
+                "metric": "ADU-assigned users with denial evidence",
+                "value": len(outputs.adu_user_summary.merge(
+                    adu_assigned[["named_user"]].rename(columns={"named_user": "user_display_name"}),
+                    on="user_display_name",
+                    how="inner",
+                )) if not adu_assigned.empty and not outputs.adu_user_summary.empty else 0,
+            },
+            {
+                "metric": "High-confidence dedicated ADU candidates",
+                "value": int((outputs.licence_recommendations["recommendation"] == "Consider dedicated licence allocation").sum()),
+            },
+            {"metric": "Average monthly PLM users", "value": avg_monthly_users},
+        ]
+    )
+
+
+def build_named_vs_average_source(outputs: AnalysisOutputs) -> pd.DataFrame:
+    """Build a compact source table for named users versus average monthly usage."""
+
+    named = outputs.named_licence_analysis
+    avg_monthly_users = round(outputs.monthly_active_users["active_users"].mean(), 2) if not outputs.monthly_active_users.empty else 0
+    no_login = int((named["match_status"] != "Matched").sum()) if not named.empty else 0
+    return pd.DataFrame(
+        [
+            {"metric": "Named licence users", "value": len(named)},
+            {"metric": "Average monthly PLM users", "value": avg_monthly_users},
+            {"metric": "Named users with no observed login", "value": no_login},
+        ]
+    )
+
+
+def build_named_vs_adu_status_source(outputs: AnalysisOutputs) -> pd.DataFrame:
+    """Build comparison counts for named users versus ADU-assigned users by status."""
+
+    statuses = ["Regular", "Occasional", "Rare", "No observed login"]
+    named = outputs.named_licence_analysis.copy()
+    adu_assigned = named.loc[named["allocated_licence"] == "PTC Navigate Contributor - ADU"].copy()
+    named_status = named["usage_category"].fillna("No observed login")
+    adu_status = adu_assigned["usage_category"].fillna("No observed login")
+    rows = []
+    for group_name, series in [("Named users", named_status), ("ADU-assigned users", adu_status)]:
+        row = {"group": group_name}
+        counts = series.value_counts().to_dict()
+        for status in statuses:
+            row[status] = int(counts.get(status, 0))
+        rows.append(row)
+    return pd.DataFrame(rows)
 
 
 def create_usage_analysis_sheet(worksheet: Worksheet, outputs: AnalysisOutputs) -> None:
@@ -589,6 +900,35 @@ def write_positioned_table(
     return row_index + len(dataframe) + 2
 
 
+def write_chart_explanation(
+    worksheet: Worksheet,
+    start_row: int,
+    start_col: int,
+    summary: str,
+    source: str,
+    message: str,
+    width_columns: int = 6,
+) -> int:
+    """Write a standard chart explanation block."""
+
+    entries = [
+        ("Summary", summary),
+        ("Source", source),
+        ("Message", message),
+    ]
+    current_row = start_row
+    for label, text in entries:
+        worksheet.cell(row=current_row, column=start_col, value=f"{label}:")
+        worksheet.cell(row=current_row, column=start_col).font = Font(bold=True)
+        worksheet.cell(row=current_row, column=start_col + 1, value=text)
+        current_row += 1
+
+    end_col = start_col + width_columns - 1
+    for column_index in range(start_col + 1, end_col + 1):
+        worksheet.column_dimensions[get_column_letter(column_index)].width = 22
+    return current_row
+
+
 def write_reporting_section(
     worksheet: Worksheet,
     title: str,
@@ -637,6 +977,17 @@ def format_sheet(worksheet: Worksheet, header_row: int = 1) -> None:
         column_letter = get_column_letter(column_cells[0].column)
         max_length = max(len("" if cell.value is None else str(cell.value)) for cell in column_cells)
         worksheet.column_dimensions[column_letter].width = min(max(max_length + 2, 12), 40)
+
+
+def style_dashboard_sheet(worksheet: Worksheet) -> None:
+    """Apply formatting for executive dashboard-style tabs."""
+
+    worksheet.freeze_panes = "A3"
+    worksheet.sheet_view.showGridLines = False
+    for column_cells in worksheet.columns:
+        column_letter = get_column_letter(column_cells[0].column)
+        max_length = max(len("" if cell.value is None else str(cell.value)) for cell in column_cells)
+        worksheet.column_dimensions[column_letter].width = min(max(max_length + 2, 14), 32)
 
 
 def style_reporting_sheet(worksheet: Worksheet) -> None:
@@ -816,6 +1167,51 @@ def add_simple_bar_chart(
     categories = Reference(
         worksheet,
         min_col=start_col + category_col_offset,
+        min_row=header_row + 1,
+        max_row=header_row + data_rows,
+    )
+    chart.add_data(data, titles_from_data=True)
+    chart.set_categories(categories)
+    worksheet.add_chart(chart, anchor_cell)
+
+
+def add_stacked_status_chart(
+    worksheet: Worksheet,
+    anchor_cell: str,
+    start_col: int,
+    header_row: int,
+    data_rows: int,
+    title: str,
+    x_axis_title: str,
+    y_axis_title: str,
+) -> None:
+    """Add a stacked column chart for status comparisons."""
+
+    if data_rows < 1:
+        return
+
+    chart = BarChart()
+    chart.type = "col"
+    chart.grouping = "stacked"
+    chart.overlap = 100
+    chart.title = title
+    chart.x_axis.title = x_axis_title
+    chart.y_axis.title = y_axis_title
+    chart.style = 10
+    chart.height = REPORT_CHART_HEIGHT
+    chart.width = REPORT_CHART_WIDTH
+    chart.gapWidth = 35
+
+    data = Reference(
+        worksheet,
+        min_col=start_col + 1,
+        min_row=header_row,
+        max_col=start_col + 4,
+        max_row=header_row + data_rows,
+    )
+    categories = Reference(
+        worksheet,
+        min_col=start_col,
         min_row=header_row + 1,
         max_row=header_row + data_rows,
     )

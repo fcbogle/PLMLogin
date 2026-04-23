@@ -9,6 +9,7 @@ import pandas as pd
 from config import AppConfig
 from src.categoriser import categorise_user
 from src.models import AnalysisOutputs, CleaningReport
+from src.named_licences import build_empty_named_licences
 from src.production_technicians import (
     build_production_technician_match_report,
     normalise_person_name,
@@ -20,6 +21,7 @@ def build_analysis_outputs(
     config: AppConfig,
     cleaning_report: CleaningReport,
     production_technicians: pd.DataFrame | None = None,
+    named_licences: pd.DataFrame | None = None,
     cleaned_adu_df: pd.DataFrame | None = None,
     adu_user_summary: pd.DataFrame | None = None,
     adu_monthly_denials: pd.DataFrame | None = None,
@@ -28,6 +30,7 @@ def build_analysis_outputs(
 
     user_summary = build_user_summary(cleaned_df, config)
     user_summary = add_production_technician_flags(user_summary, production_technicians)
+    named_licences = named_licences if named_licences is not None else build_empty_named_licences()
     adu_user_summary = adu_user_summary if adu_user_summary is not None else pd.DataFrame()
     cleaned_adu_df = cleaned_adu_df if cleaned_adu_df is not None else pd.DataFrame()
     adu_monthly_denials = adu_monthly_denials if adu_monthly_denials is not None else pd.DataFrame()
@@ -44,6 +47,12 @@ def build_analysis_outputs(
     production_technician_review_summary = build_production_technician_review_summary(
         production_technician_matches
     )
+    named_licence_analysis = build_named_licence_analysis(named_licences, user_summary)
+    named_licence_summary = build_named_licence_summary(named_licence_analysis, monthly_active_users)
+    named_licence_review_summary = build_named_licence_review_summary(named_licence_analysis)
+    named_licence_no_login = named_licence_analysis.loc[
+        named_licence_analysis["named_licence_review_status"] == "No observed login activity"
+    ].reset_index(drop=True)
     licence_recommendations = build_licence_recommendations(
         user_summary,
         adu_user_summary,
@@ -75,6 +84,10 @@ def build_analysis_outputs(
         else cleaned_adu_df,
         adu_user_summary=adu_user_summary,
         adu_monthly_denials=adu_monthly_denials,
+        named_licence_analysis=named_licence_analysis,
+        named_licence_summary=named_licence_summary,
+        named_licence_review_summary=named_licence_review_summary,
+        named_licence_no_login=named_licence_no_login,
         monthly_activity=monthly_activity,
         licence_recommendations=licence_recommendations,
         dedicated_licence_candidates=dedicated_licence_candidates,
@@ -91,6 +104,147 @@ def build_analysis_outputs(
         production_technician_matches=production_technician_matches,
         category_rules=category_rules,
         cleaning_report=cleaning_report,
+    )
+
+
+def build_named_licence_analysis(named_licences: pd.DataFrame, user_summary: pd.DataFrame) -> pd.DataFrame:
+    """Build user-level analysis for allocated named licences."""
+
+    if named_licences.empty:
+        return pd.DataFrame(
+            columns=[
+                "named_user",
+                "allocated_licence",
+                "match_status",
+                "matched_login_user",
+                "usage_category",
+                "distinct_login_days",
+                "active_months",
+                "average_active_days_per_month",
+                "last_login_date",
+                "adu_denied_days",
+                "adu_denied_attempts",
+                "is_production_technician",
+                "named_licence_review_status",
+            ]
+        )
+
+    users = user_summary.copy()
+    users["named_user_match_key"] = users["user_display_name"].apply(normalise_person_name)
+    merged = named_licences.merge(
+        users[
+            [
+                "named_user_match_key",
+                "user",
+                "user_display_name",
+                "usage_category",
+                "distinct_login_days",
+                "active_months",
+                "average_active_days_per_month",
+                "last_login_date",
+                "adu_denied_days",
+                "adu_denied_attempts",
+                "is_production_technician",
+            ]
+        ],
+        on="named_user_match_key",
+        how="left",
+    )
+    merged["match_status"] = merged["user"].apply(lambda value: "Matched" if pd.notna(value) else "Unmatched")
+    merged["named_licence_review_status"] = merged.apply(classify_named_licence_review_status, axis=1)
+    merged = merged.rename(columns={"user": "matched_login_user"})
+    merged["is_production_technician"] = merged["is_production_technician"].fillna(False).astype(bool)
+    numeric_columns = [
+        "distinct_login_days",
+        "active_months",
+        "average_active_days_per_month",
+        "adu_denied_days",
+        "adu_denied_attempts",
+    ]
+    merged[numeric_columns] = merged[numeric_columns].fillna(0)
+    return merged[
+        [
+            "named_user",
+            "allocated_licence",
+            "match_status",
+            "matched_login_user",
+            "user_display_name",
+            "usage_category",
+            "distinct_login_days",
+            "active_months",
+            "average_active_days_per_month",
+            "last_login_date",
+            "adu_denied_days",
+            "adu_denied_attempts",
+            "is_production_technician",
+            "named_licence_review_status",
+        ]
+    ].sort_values(["allocated_licence", "named_licence_review_status", "named_user"]).reset_index(drop=True)
+
+
+def classify_named_licence_review_status(row: pd.Series) -> str:
+    """Classify named licence holders for review."""
+
+    if row["match_status"] != "Matched":
+        return "No observed login activity"
+    if row["usage_category"] == "Regular":
+        return "Retain named licence"
+    if row["usage_category"] == "Occasional":
+        return "Review named licence"
+    return "Candidate for named-to-ADU transfer"
+
+
+def build_named_licence_summary(
+    named_licence_analysis: pd.DataFrame,
+    monthly_active_users: pd.DataFrame,
+) -> pd.DataFrame:
+    """Build executive summary metrics for the named licence group."""
+
+    if named_licence_analysis.empty:
+        average_monthly_users = 0
+    else:
+        average_monthly_users = round(monthly_active_users["active_users"].mean(), 2) if not monthly_active_users.empty else 0
+
+    metrics = [
+        ("Named licences allocated", len(named_licence_analysis)),
+        (
+            "Named users matched to login audit",
+            int((named_licence_analysis["match_status"] == "Matched").sum()) if not named_licence_analysis.empty else 0,
+        ),
+        (
+            "Named users with no observed login",
+            int((named_licence_analysis["match_status"] != "Matched").sum()) if not named_licence_analysis.empty else 0,
+        ),
+        (
+            "Named users classed as Regular",
+            int((named_licence_analysis["usage_category"] == "Regular").sum()) if not named_licence_analysis.empty else 0,
+        ),
+        (
+            "Named users classed as Occasional",
+            int((named_licence_analysis["usage_category"] == "Occasional").sum()) if not named_licence_analysis.empty else 0,
+        ),
+        (
+            "Named users classed as Rare",
+            int((named_licence_analysis["usage_category"] == "Rare").sum()) if not named_licence_analysis.empty else 0,
+        ),
+        ("Average monthly PLM users", average_monthly_users),
+        ("Named licences above average monthly PLM users", round(len(named_licence_analysis) - average_monthly_users, 2)),
+    ]
+    return pd.DataFrame(metrics, columns=["metric", "value"])
+
+
+def build_named_licence_review_summary(named_licence_analysis: pd.DataFrame) -> pd.DataFrame:
+    """Build a summary of named licence review outcomes."""
+
+    if named_licence_analysis.empty:
+        return pd.DataFrame(columns=["named_licence_review_status", "user_count"])
+    return (
+        named_licence_analysis.groupby("named_licence_review_status")
+        .size()
+        .rename("user_count")
+        .reset_index()
+        .sort_values("user_count", ascending=False)
+        .reset_index(drop=True)
     )
 
 

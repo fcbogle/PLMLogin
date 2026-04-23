@@ -30,6 +30,10 @@ class AppConfig:
     adu_timestamp_column: str = "Event Time"
     adu_event_label_column: str = "Event Label"
     adu_denied_event_label: str = "Login Denied - Insufficient ADU License"
+    named_licence_input_file: Path | None = Path("/Users/frankbogle/Documents/act_license/Licensed_User-23-04-26.xlsx")
+    named_licence_input_sheet: str = "Sheet1"
+    named_licence_user_column: str = "User"
+    named_licence_allocated_column: str = "Allocated License"
     optional_columns: list[str] = field(
         default_factory=lambda: [
             "Event Label",
@@ -76,6 +80,10 @@ def build_config_with_overrides(
     adu_user_column: str | None = None,
     adu_timestamp_column: str | None = None,
     adu_event_label_column: str | None = None,
+    named_licence_input_file: Path | None = None,
+    named_licence_input_sheet: str | None = None,
+    named_licence_user_column: str | None = None,
+    named_licence_allocated_column: str | None = None,
     exclusions_file: Path | None = None,
     production_technicians_file: Path | None = None,
     production_technicians_sheet: str | int | None = None,
@@ -107,6 +115,14 @@ def build_config_with_overrides(
         adu_user_column=adu_user_column or config.adu_user_column,
         adu_timestamp_column=adu_timestamp_column or config.adu_timestamp_column,
         adu_event_label_column=adu_event_label_column or config.adu_event_label_column,
+        named_licence_input_file=(
+            named_licence_input_file if named_licence_input_file is not None else config.named_licence_input_file
+        ),
+        named_licence_input_sheet=named_licence_input_sheet or config.named_licence_input_sheet,
+        named_licence_user_column=named_licence_user_column or config.named_licence_user_column,
+        named_licence_allocated_column=(
+            named_licence_allocated_column or config.named_licence_allocated_column
+        ),
         production_technicians_file=production_technicians_file or config.production_technicians_file,
         production_technicians_sheet=(
             config.production_technicians_sheet

@@ -12,6 +12,7 @@ from src.analyser import build_analysis_outputs
 from src.cleaner import clean_login_data
 from src.excel_writer import write_analysis_workbook
 from src.loader import load_login_records
+from src.named_licences import load_named_licences
 from src.production_technicians import load_production_technicians
 
 
@@ -40,6 +41,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--adu-user-column", help="ADU audit column containing the user identifier.")
     parser.add_argument("--adu-timestamp-column", help="ADU audit column containing the event timestamp.")
     parser.add_argument("--adu-event-label-column", help="ADU audit column containing the event label.")
+    parser.add_argument("--named-licence-input-file", type=Path, help="Path to the named licence workbook.")
+    parser.add_argument("--named-licence-input-sheet", help="Name of the named licence worksheet.")
+    parser.add_argument("--named-licence-user-column", help="Named licence workbook column containing the user name.")
+    parser.add_argument(
+        "--named-licence-allocated-column",
+        help="Named licence workbook column containing the allocated licence type.",
+    )
     parser.add_argument(
         "--exclusions-file",
         type=Path,
@@ -87,6 +95,10 @@ def main() -> None:
         adu_user_column=args.adu_user_column,
         adu_timestamp_column=args.adu_timestamp_column,
         adu_event_label_column=args.adu_event_label_column,
+        named_licence_input_file=args.named_licence_input_file,
+        named_licence_input_sheet=args.named_licence_input_sheet,
+        named_licence_user_column=args.named_licence_user_column,
+        named_licence_allocated_column=args.named_licence_allocated_column,
         exclusions_file=args.exclusions_file,
         production_technicians_file=args.production_technicians_file,
         production_technicians_sheet=args.production_technicians_sheet,
@@ -98,6 +110,7 @@ def main() -> None:
     raw_df = load_login_records(config)
     cleaned_df, cleaning_report = clean_login_data(raw_df, config)
     production_technicians = load_production_technicians(config)
+    named_licences = load_named_licences(config)
     raw_adu_df = load_adu_denials(config)
     cleaned_adu_df = clean_adu_denials(raw_adu_df, config)
     adu_user_summary = build_adu_user_summary(cleaned_adu_df, config)
@@ -107,6 +120,7 @@ def main() -> None:
         config,
         cleaning_report,
         production_technicians,
+        named_licences,
         cleaned_adu_df,
         adu_user_summary,
         adu_monthly_denials,
